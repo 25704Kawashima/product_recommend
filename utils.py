@@ -39,7 +39,7 @@ def preprocess_func(text):
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    tokenizer_obj = dictionary.Dictionary(dict="full").create()
+    tokenizer_obj = dictionary.Dictionary(dict="small").create()
     mode = tokenizer.Tokenizer.SplitMode.A
     tokens = tokenizer_obj.tokenize(text ,mode)
     words = [token.surface() for token in tokens]
