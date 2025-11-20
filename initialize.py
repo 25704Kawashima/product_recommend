@@ -140,6 +140,9 @@ def adjust_string(s):
     if type(s) is not str:
         return s
 
+    # UTF-8 BOM が含まれる場合は除去（CSVによっては先頭に \ufeff が入る）
+    s = s.lstrip("\ufeff")
+
     # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
     if sys.platform.startswith("win"):
         s = unicodedata.normalize('NFC', s)

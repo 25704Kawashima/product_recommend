@@ -8,6 +8,7 @@
 import logging
 import streamlit as st
 import constants as ct
+import utils
 
 
 ############################################################
@@ -57,17 +58,71 @@ def display_product(result):
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # LLMレスポンスのテキストを辞書に変換
-    product_lines = result[0].page_content.split("\n")
-    product = {item.split(": ")[0]: item.split(": ")[1] for item in product_lines}
+    # 応答が期待どおりかチェックしてから丁寧にパースする
+    try:
+        if not result or not isinstance(result, (list, tuple)):
+            raise ValueError("レスポンスが空またはリストではありません")
+        doc = result[0]
+        page = getattr(doc, "page_content", None)
+        if not page:
+            raise ValueError("page_content が存在しません")
+
+        product_lines = [line.strip() for line in page.splitlines() if line.strip()]
+        product = {}
+        # ラベルの正規化マップ（必要に応じて追加）
+        label_map = {
+            "商品名": "name", "name": "name",
+            "商品id": "id", "id": "id", "商品ID": "id",
+            "価格": "price", "price": "price",
+            "商品カテゴリ": "category", "カテゴリ": "category", "category": "category",
+            "メーカー": "maker", "maker": "maker",
+            "評価": "score", "score": "score",
+            "レビュー件数": "review_number", "review_number": "review_number",
+            "ファイル名": "file_name", "file_name": "file_name",
+            "説明": "description", "商品説明": "description", "description": "description",
+            "おすすめ対象": "recommended_people", "こんな方におすすめ": "recommended_people", "recommended_people": "recommended_people"
+        }
+
+        last_key = None
+        for item in product_lines:
+            if ": " in item:
+                key, val = item.split(": ", 1)
+            elif ":" in item:
+                key, val = item.split(":", 1)
+            else:
+                # コロンがない行は直前のフィールド（例: 説明の続き）に追加
+                if last_key:
+                    product[last_key] = product.get(last_key, "") + "\n" + item
+                continue
+            key = key.strip()
+            val = val.strip()
+            norm_key = label_map.get(key, key).strip().lower()
+            product[norm_key] = val
+            last_key = norm_key
+
+        # 必須キーの検証
+        for k in ("id", "name", "price"):
+            if k not in product:
+                raise KeyError(k)
+
+    except Exception as e:
+        logger.error(f"{ct.LLM_RESPONSE_DISP_ERROR_MESSAGE}\n{e}")
+        st.error(utils.build_error_message(ct.LLM_RESPONSE_DISP_ERROR_MESSAGE))
+        return
 
     st.markdown("以下の商品をご提案いたします。")
 
     # 「商品名」と「価格」
     st.success(f"""
-            商品名：{product['name']}（商品ID: {product['id']}）\n
-            価格：{product['price']}
+            商品名：{product.get('name','-')}（商品ID: {product.get('id','-')}）\n
+            価格：{product.get('price','-')}
     """)
+
+    # 在庫状況によって表示
+    if product.get('stock_status') == "残りわずか":
+        st.warning("ご好評につき、在庫数残りわずかです。購入を希望の場合、お早めの注文をおすすめします。")
+    elif product.get('stock_status') == "なし":
+        st.error("申し訳ございませんが、現在在庫切れとなっております。入荷まで今しばらくお待ちください。")
 
     # 「商品カテゴリ」と「メーカー」と「ユーザー評価」
     st.code(f"""
